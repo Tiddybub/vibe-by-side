@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Connect an app · Vibe by Side</title>
+<link rel="icon" href="art/emblem.png">
+<style>
+  :root { --bg:#0c0a10; --panel:#16121d; --line:#2a2235; --ink:#e8e2f2; --dim:#8d84a0; --gold:#d6b25a; }
+  html { background:var(--bg); }
+  body { margin:0; min-height:100vh; display:grid; place-items:center; padding:16px; box-sizing:border-box; color:var(--ink);
+    font:16px/1.5 system-ui, sans-serif; background:url(art/universe.jpg) center / cover no-repeat var(--bg); }
+  .card { width:100%; max-width:400px; background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:28px; text-align:center; }
+  img { width:72px; } h1 { color:var(--gold); letter-spacing:.14em; text-transform:uppercase; font-size:20px; margin:8px 0 4px; }
+  p { color:var(--dim); margin:6px 0 18px; } b { color:var(--ink); }
+  input, button { width:100%; box-sizing:border-box; font:inherit; padding:12px; border-radius:8px; margin:6px 0; }
+  input { background:#0f0c14; color:var(--ink); border:1px solid var(--line); }
+  button { cursor:pointer; border:1px solid var(--line); background:transparent; color:var(--ink); }
+  button.gold { background:var(--gold); color:#1a1200; border:none; font-weight:700; }
+  .err { color:#ff8ea3; min-height:1.5em; } .hidden { display:none; } a { color:var(--gold); }
+</style>
+</head>
+<body>
+<main class="card">
+  <img src="art/emblem.png" alt="">
+  <h1>Connect an app</h1>
+  <form id="loginForm" class="hidden">
+    <p>Log in to Vibe by Side so this app can open and change your worlds.</p>
+    <input id="login" placeholder="Username or email" autocomplete="username" required>
+    <input id="pass" type="password" placeholder="Password" autocomplete="current-password" required>
+    <button class="gold">Log in</button>
+    <p>No account yet? <a href="/" target="_blank">Sign up here</a>, then come back.</p>
+  </form>
+  <div id="allow" class="hidden">
+    <p>Logged in as <b id="who"></b>.<br>Let this app see and change your worlds? You can watch every change live on vibebyside.com.</p>
+    <button class="gold" id="yes">Allow</button>
+    <button id="no">Cancel</button>
+  </div>
+  <div class="err" id="err"></div>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.min.js"></script>
+<script src="config.js"></script>
+<script>
+const $ = (s) => document.querySelector(s), q = new URLSearchParams(location.search);
+const sb = supabase.createClient(window.OMNIVIBE.supabaseUrl, window.OMNIVIBE.supabaseAnonKey);
+const say = (t) => { $('#err').textContent = t; };
+
+async function ready() {
+  const s = (await sb.auth.getSession()).data.session;
+  if (!s) { $('#loginForm').classList.remove('hidden'); $('#allow').classList.add('hidden'); return; }
+  const { data } = await sb.from('profiles').select('name').eq('id', s.user.id).maybeSingle();
+  $('#who').textContent = data?.name || s.user.email;
+  $('#loginForm').classList.add('hidden'); $('#allow').classList.remove('hidden');
+}
+
+$('#loginForm').onsubmit = async (e) => { // same username-or-email login as the main page
+  e.preventDefault(); say('');
+  const r = await fetch('/login', { method: 'POST', body: JSON.stringify({ login: $('#login').value.trim(), password: $('#pass').value }) });
+  const j = await r.json();
+  if (!r.ok) return say(j.error || 'Could not log in.');
+  await sb.auth.setSession(j.tokens);
+  ready();
+};
+
+$('#yes').onclick = async () => {
+  say('');
+  const s = (await sb.auth.getSession()).data.session;
+  const body = { access_token: s?.access_token };
+  for (const k of ['client_id', 'redirect_uri', 'state', 'code_challenge', 'code_challenge_method']) if (q.has(k)) body[k] = q.get(k);
+  const r = await fetch('/oauth/approve', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const j = await r.json();
+  if (!r.ok) return say(j.error_description || 'Something went wrong. Try connecting again from your app.');
+  location.href = j.redirect;
+};
+$('#no').onclick = () => { location.href = '/'; };
+
+if (!q.get('client_id') || !q.get('redirect_uri')) say('Open this page from your MCP client\'s "Connect" button.');
+else ready();
+</script>
+</body>
+</html>

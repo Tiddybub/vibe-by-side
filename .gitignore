@@ -1,0 +1,10 @@
+node_modules
+.netlify
+.env
+public/config.js
+*.log
+*.err
+*.pid
+deno.lock
+.DS_Store
+Thumbs.db
